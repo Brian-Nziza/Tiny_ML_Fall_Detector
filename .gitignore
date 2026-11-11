@@ -1,0 +1,6 @@
+Debug/
+Release/
+*.launch
+.settings/
+recordings/
+__pycache__/
