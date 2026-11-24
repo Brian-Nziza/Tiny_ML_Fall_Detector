@@ -22,7 +22,13 @@ Peripherals are configured in STM32CubeMX (`fall_detector.ioc`) and use the STM3
 - `Core/Src/lis35de.c` - LIS35DE driver: WHO_AM_I check, 400 Hz output data rate, +-8 g range
 - `Core/Src/app.c` - sampling loop, button debounce in the 1 kHz TIM4 interrupt, UART output
 - `Core/Src/seg_display.c` - multiplexed 7-segment display showing the recording count
+- `Core/Src/store.c` - up to 10 recordings kept in flash sector 7 (0x08060000) with a CRC32 each, so data can be recorded off the cable and dumped later
+- `Core/Src/rtos.c` - FreeRTOS version: a sensor task feeds a queue, an inference task runs a free-fall + impact trigger and passes a 1 s window to the model
+- `Core/Src/model.c` - model placeholder (`Model_Run` returns a fall score), weak so the generated network can replace it
 - TIM2 runs free at 1 MHz and timestamps every sample
+
+The linker script gives the program 384 KB so sector 7 stays free for the store.
+`rtos.c` only builds once FreeRTOS is enabled in the `.ioc`.
 
 UART protocol, one ASCII record per line:
 
@@ -33,6 +39,9 @@ R,<t_us>               reset button: session ended, counter back to 0
 #...                   status text
 ```
 
+Commands from the PC, one byte each: `L` / `l` live or store mode, `I` store info,
+`D` dump new recordings, `A` dump all, `K<slot>` acknowledge a slot, `X` erase the store.
+
 ## PC logger
 
 `tools/fall_logger.py` reads the stream, shows a live plot of total acceleration
@@ -42,6 +51,7 @@ and saves each recording as one labelled CSV row.
 pip install pyserial matplotlib
 python tools/fall_logger.py --label fall
 python tools/fall_logger.py --demo
+python tools/fall_logger.py --dump --erase
 ```
 
 ## Signal processing
@@ -56,4 +66,6 @@ at 35 Hz before further analysis.
 
 ## Status
 
-Data recording is complete. Fall classification on the device is the next stage.
+Data recording is complete, on the cable and from flash. The RTOS pipeline is in
+place with a placeholder model; training the network and dropping it into
+`model.c` is the next stage.
