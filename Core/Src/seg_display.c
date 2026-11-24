@@ -1,12 +1,7 @@
 #include "seg_display.h"
 #include "main.h"
 
-/* ---------------------------------------------------------------------------
- * POLARITY: the shield documentation does not say whether DISP1 (7SD4-056) is
- * common-cathode or common-anode. 1 = common cathode (segment HIGH = lit,
- * digit common LOW = selected). If the display shows nonsense or is very dim
- * and every digit looks like an inverted "8", flip this to 0.
- * ------------------------------------------------------------------------- */
+// not in the shield docs, set 0 if its common anode
 #define DISP_COMMON_CATHODE 1
 
 #if DISP_COMMON_CATHODE
@@ -17,24 +12,19 @@
 #define COM_ON_LEVEL 1u
 #endif
 
-/* Port C bit number for each segment bit: A B C D E F G DP (from schematic) */
 static const uint8_t SEG_PIN[8] = { 6, 4, 3, 1, 2, 5, 0, 7 };
 
-/* Port C bit number for each digit common, left digit first.
- * If the number appears mirrored ("100" instead of "001"), reverse this. */
 static const uint8_t COM_PIN[4] = { 11, 10, 9, 8 };
 
-/* Segment patterns, bit0 = A ... bit6 = G, bit7 = DP. Index 0-9 = digits. */
 enum { G_BLANK = 10, G_DASH = 11, G_E = 12, G_r = 13 };
 static const uint8_t FONT[14] = {
-    0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F,  /* 0-9  */
-    0x00,                                                        /* blank */
-    0x40,                                                        /* -     */
-    0x79,                                                        /* E     */
-    0x50                                                         /* r     */
+    0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F,
+    0x00,
+    0x40,
+    0x79,
+    0x50
 };
 
-/* What each digit should show; written by main loop, read by the ISR. */
 static volatile uint8_t frame[4];
 
 void Disp_Init(void)
@@ -42,7 +32,7 @@ void Disp_Init(void)
     __HAL_RCC_GPIOC_CLK_ENABLE();
 
     GPIO_InitTypeDef gi = {0};
-    gi.Pin   = 0x0FFF;                       /* PC0 .. PC11 */
+    gi.Pin   = 0x0FFF;
     gi.Mode  = GPIO_MODE_OUTPUT_PP;
     gi.Pull  = GPIO_NOPULL;
     gi.Speed = GPIO_SPEED_FREQ_LOW;
@@ -53,7 +43,7 @@ void Disp_Init(void)
 
 void Disp_Tick(void)
 {
-    static uint8_t d = 0;                    /* digit being driven this tick */
+    static uint8_t d = 0;
     uint32_t out = 0;
     uint8_t seg = frame[d];
 
@@ -67,7 +57,7 @@ void Disp_Tick(void)
         out |= level << COM_PIN[k];
     }
 
-    /* One atomic write: low half sets pins, high half clears them. */
+    // set and clear in one write
     GPIOC->BSRR = (out & 0x0FFFu) | ((~out & 0x0FFFu) << 16);
 
     d = (uint8_t)((d + 1u) & 3u);
@@ -77,7 +67,7 @@ void Disp_SetNumber(uint16_t n)
 {
     if (n > 9999u) n = 9999u;
     frame[0] = (n >= 1000u) ? FONT[(n / 1000u) % 10u] : FONT[G_BLANK];
-    frame[1] = FONT[(n / 100u) % 10u];       /* zero-padded: shows " 001" */
+    frame[1] = FONT[(n / 100u) % 10u];
     frame[2] = FONT[(n / 10u) % 10u];
     frame[3] = FONT[n % 10u];
 }
@@ -93,4 +83,33 @@ void Disp_ShowErr(void)
 void Disp_ShowDashes(void)
 {
     for (uint8_t i = 0; i < 4; i++) frame[i] = FONT[G_DASH];
+}
+
+void Disp_ShowWord(const char *s)
+{
+    for (uint8_t i = 0; i < 4; i++) {
+        char c = s[i];
+        uint8_t seg = 0x00;
+        if (c >= '0' && c <= '9') seg = FONT[c - '0'];
+        else switch (c) {
+            case '-': seg = 0x40; break;
+            case 'E': seg = 0x79; break;
+            case 'r': seg = 0x50; break;
+            case 'F': seg = 0x71; break;
+            case 'U': seg = 0x3E; break;
+            case 'L': seg = 0x38; break;
+            case 'S': seg = 0x6D; break;
+            case 'A': seg = 0x77; break;
+            case 'C': seg = 0x39; break;
+            case 'd': seg = 0x5E; break;
+            case 'n': seg = 0x54; break;
+            case 'o': seg = 0x5C; break;
+            case 't': seg = 0x78; break;
+            case 'P': seg = 0x73; break;
+            case 'b': seg = 0x7C; break;
+            case 'H': seg = 0x76; break;
+            default:  seg = 0x00; break;
+        }
+        frame[i] = seg;
+    }
 }
